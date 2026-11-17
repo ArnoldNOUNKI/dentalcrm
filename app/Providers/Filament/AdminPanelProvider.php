@@ -29,7 +29,7 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->passwordReset()
             ->profile()
-            ->brandName(config('app.name', 'AurumDent CRM'))
+            ->brandName(config('app.name', 'DentalCRM'))
             ->colors([
                 'primary' => Color::Amber,
                 'gray' => Color::Slate,

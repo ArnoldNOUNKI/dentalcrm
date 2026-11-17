@@ -1,4 +1,4 @@
-# AurumDent CRM
+# DentalCRM
 
 CRM multi-utilisateurs pour la **prospection et la collecte de métaux dentaires** (or, platine, palladium, argent) auprès des cabinets dentaires, centres et laboratoires de prothèse.
 Téléphonie **Ringover** intégrée, **import CSV** avec traitement automatique, **IA Claude** (Anthropic) à chaque étape.
@@ -86,7 +86,7 @@ Tests : `php artisan test` (27 tests : import, webhooks Ringover, IA simulée, d
 
 1. Poussez le projet sur un dépôt Git (GitHub/GitLab/Gitea).
 2. Dans Coolify : **New Resource → Docker Compose** → sélectionnez le dépôt (fichier `docker-compose.yml`).
-3. Dans le service `app` : **supprimez le mapping `ports`** et déclarez votre domaine sur **`app` port `8080`** (Coolify/Traefik gère le HTTPS).
+3. Dans le service `app` : déclarez votre domaine sur **`app` port `8080`**, par exemple `https://crm.votre-domaine.fr:8080` (Coolify/Traefik gère le HTTPS). Aucun port n'est publié sur l'hôte.
 4. Onglet **Environment Variables** : reprenez `.env.example`, en particulier :
    - `APP_KEY`, à générer avec `php artisan key:generate --show`
    - `APP_URL=https://crm.votre-domaine.fr`
@@ -96,7 +96,7 @@ Tests : `php artisan test` (27 tests : import, webhooks Ringover, IA simulée, d
    - `MAIL_*` pour l'envoi des emails
 5. Déployez. Au démarrage, le conteneur `app` lance les migrations, met en cache config/routes/vues, optimise Filament et crée l'admin. Les conteneurs `queue` et `scheduler` démarrent ensuite.
 
-Hors Coolify : `docker compose up -d --build` avec un `.env` complet (le CRM est sur le port `APP_PORT`, 8080 par défaut).
+Hors Coolify : `docker compose up -d --build` avec un `.env` complet. Le fichier `docker-compose.override.yml`, chargé automatiquement en local, publie le CRM sur le port `APP_PORT` (8080 par défaut).
 
 Volumes persistants : `mysql`, `redis` et `storage` (fichiers d'import/export).
 

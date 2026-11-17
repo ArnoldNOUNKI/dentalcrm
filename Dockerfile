@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# AurumDent CRM — image de production (Nginx + PHP-FPM, port 8080)
+# DentalCRM — image de production (Nginx + PHP-FPM, port 8080)
 # Basée sur serversideup/php : migrations et mises en cache automatiques au démarrage.
 # ---------------------------------------------------------------------------
 FROM serversideup/php:8.3-fpm-nginx

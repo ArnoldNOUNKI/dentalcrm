@@ -1,0 +1,6 @@
+# Utilisé uniquement hors Coolify : `docker compose up -d --build` charge ce fichier automatiquement.
+# Coolify ne le lit pas (il déploie seulement docker-compose.yml).
+services:
+  app:
+    ports:
+      - "${APP_PORT:-8080}:8080"
