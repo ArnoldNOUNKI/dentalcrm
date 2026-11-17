@@ -19,9 +19,9 @@ x-app: &app
   environment: &app-env
     APP_NAME: ${APP_NAME:-DentalCRM}
     APP_ENV: production
-    APP_KEY: ${APP_KEY:?APP_KEY est obligatoire (php artisan key:generate --show)}
+    APP_KEY: ${APP_KEY:-}               # obligatoire : vérifié au démarrage (voir docker/entrypoint.d/60-crm.sh)
     APP_DEBUG: ${APP_DEBUG:-false}
-    APP_URL: ${APP_URL:?APP_URL est obligatoire (https://crm.votre-domaine.fr)}
+    APP_URL: ${APP_URL:-}               # obligatoire : https://crm.votre-domaine.fr
     APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Paris}
     APP_LOCALE: fr
     APP_FALLBACK_LOCALE: fr
