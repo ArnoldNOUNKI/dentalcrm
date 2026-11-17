@@ -91,7 +91,8 @@ class DemoSeeder extends Seeder
                         'duration' => $answered ? $faker->numberBetween(30, 420) : 0,
                         'started_at' => now()->subDays($faker->numberBetween(0, 25))->setTime($faker->numberBetween(8, 18), $faker->numberBetween(0, 59)),
                         'outcome' => $answered ? $faker->randomElement([CallOutcome::Repondu, CallOutcome::Barrage, CallOutcome::Interesse, CallOutcome::Rappel]) : CallOutcome::PasDeReponse,
-                        'ringover_status' => 'demo',
+                        'status' => $answered ? 'answered' : 'no_answer',
+                        'external_number' => $lead->phone_normalized,
                     ]);
                 }
             }

@@ -2,11 +2,9 @@
 
 use Illuminate\Support\Facades\Schedule;
 
-// Rattrapage des appels Ringover (si un webhook a été perdu)
-Schedule::command('ringover:sync')
-    ->everyFiveMinutes()
-    ->withoutOverlapping()
-    ->when(fn () => config('services.ringover.sync_enabled') && filled(config('services.ringover.api_key')));
+// Récupération automatique des appels de tous les services de téléphonie connectés
+// (chaque service a son propre intervalle, réglable dans Téléphonie → Intégrations)
+Schedule::command('telephony:sync')->everyMinute()->withoutOverlapping();
 
 // Notifications des rappels qui arrivent à échéance
 Schedule::command('crm:notify-due-tasks')->everyFiveMinutes()->withoutOverlapping();

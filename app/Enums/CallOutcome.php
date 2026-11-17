@@ -45,6 +45,16 @@ enum CallOutcome: string implements HasColor, HasLabel
         };
     }
 
+    /** Statut technique correspondant (saisie manuelle d'un appel). */
+    public function toCallStatus(): CallStatus
+    {
+        return match ($this) {
+            self::PasDeReponse, self::MauvaisNumero => CallStatus::NoAnswer,
+            self::Messagerie => CallStatus::Voicemail,
+            default => CallStatus::Answered,
+        };
+    }
+
     /** Statut lead à appliquer après cet appel (null = inchangé). */
     public function nextLeadStatus(): ?LeadStatus
     {

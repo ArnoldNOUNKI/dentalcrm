@@ -28,12 +28,17 @@ Stack : Laravel 12 · Filament 3 · Livewire 3 · MySQL 8 · Redis · Docker (se
 
 Fichier d'exemple : `docs/exemple-import-leads.csv`.
 
-### Téléphonie Ringover
-- **Click-to-call** : votre poste Ringover sonne, puis le prospect est composé dès que vous décrochez. Sans clé Ringover, un simple lien `tel:` est utilisé.
-- **Webhooks** : chaque appel (sortant, entrant, manqué, messagerie) est rattaché automatiquement au lead (via le numéro) et à l'agent (ID Ringover, email ou numéro). Il est journalisé, compte comme tentative et met à jour le statut.
-- **Synchronisation de rattrapage** toutes les 5 minutes via l'API `/calls`, au cas où un webhook serait perdu. Un bouton de synchronisation manuelle est aussi disponible.
-- **Enregistrements** lisibles dans la fiche appel. Les **transcriptions** (Ringover Empower) sont exploitées par l'IA si elles sont présentes.
-- **Session d'appels** (power dialer) : enchaîne les leads de la file (rappels échus d'abord, puis leads chauds). Affiche le pitch IA, les objections et l'historique, et qualifie l'appel en un clic.
+### Téléphonie (Ringover, Aircall, Twilio, Asterisk/FreePBX, webhook générique)
+- **Plusieurs services connectables en même temps**, chacun avec ses paramètres de connexion **chiffrés en base**, gérés dans *Téléphonie → Intégrations* (administrateurs).
+- **Récupération automatique de tous les appels** : émis, reçus, manqués, messagerie, injoignables (sans réponse, occupé, échec), avec durée de conversation, temps de sonnerie, motif de non-réponse, agent, enregistrement, message vocal et transcription.
+  - **Temps réel** par webhook (Ringover, Aircall, Twilio, webhook générique), avec vérification de l'authenticité de chaque événement.
+  - **Synchronisation périodique** par API ou base CDR (Ringover, Aircall, Twilio, Asterisk), de 1 à 60 minutes selon le service, pour rattraper les webhooks perdus. Un bouton permet de récupérer l'historique sur 90 jours.
+  - Traitement idempotent : un appel reçu plusieurs fois (webhook et synchronisation) n'est jamais dupliqué.
+- **Rattachement automatique** au lead (numéro du correspondant) et à l'agent (ID, email, ligne ou poste, réglés dans *Intégrations → Agents*).
+- **Effets sur le suivi** : historique du lead, tentatives, passage en « Injoignable ». Un **appel entrant manqué** crée un rappel prioritaire et une notification pour le commercial.
+- **Click-to-call** par le service par défaut : Ringover (callback), Aircall (dial), Twilio (appel de l'agent puis mise en relation, enregistrement), Asterisk (AMI Originate) ou une URL de votre PBX. Sans service configuré, un lien `tel:` est utilisé.
+- **Journal d'appels** avec onglets Émis, Reçus, Manqués, Injoignables, Décrochés et Sans lead, filtres par service et statut, et écoute des enregistrements via le CRM (accès authentifié).
+- **Session d'appels** (power dialer) : enchaîne les leads de la file (rappels échus d'abord, puis leads chauds), avec pitch IA, objections et historique, et qualification en un clic.
 
 ### IA (Claude)
 | Fonction | Déclenchement |
@@ -78,7 +83,7 @@ php artisan serve
 ```
 Comptes de démo (hors production) : `manager@demo.fr`, `karim@demo.fr`, `julie@demo.fr`, `labo@demo.fr`, tous avec le mot de passe `demo-password`.
 
-Tests : `php artisan test` (27 tests : import, webhooks Ringover, IA simulée, droits, pages, file d'appels, pipeline, valorisation).
+Tests : `php artisan test` (42 tests : import, téléphonie par service (webhooks, signatures, synchronisation, click-to-call, CDR Asterisk), IA simulée, droits, pages, file d'appels, pipeline, valorisation).
 
 ---
 
@@ -102,20 +107,23 @@ Volumes persistants : `mysql`, `redis` et `storage` (fichiers d'import/export).
 
 ---
 
-## Configuration Ringover
+## Configuration de la téléphonie
 
-1. **Clé API** : Dashboard Ringover → *Développeur* → *API* → créer une clé avec les droits sur les appels et le click-to-call. À mettre dans `RINGOVER_API_KEY`.
-   Région US : `RINGOVER_BASE_URL=https://public-api-us.ringover.com/v2`.
-2. **Webhooks** : Dashboard → *Développeur* → *Webhooks* → URL :
-   ```
-   https://crm.votre-domaine.fr/webhooks/ringover/<RINGOVER_WEBHOOK_TOKEN>
-   ```
-   Activez au minimum les événements d'appels terminés (raccroché), manqués et messagerie. Activez aussi les enregistrements et transcriptions si votre offre les inclut.
-3. **Utilisateurs** : dans *Administration → Équipe*, renseignez pour chaque commercial :
-   - **Numéro Ringover** (format +33…) : utilisé pour le click-to-call ;
-   - **ID utilisateur Ringover** : rattache les appels reçus par webhook. Le CRM essaie aussi l'email puis le numéro de ligne.
+Tout se fait dans le CRM : **Téléphonie → Intégrations → Connecter un service**. Après l'enregistrement, la fiche affiche l'**URL du webhook** à déclarer chez le fournisseur, et le bouton **Tester la connexion** vérifie les accès.
 
-> Le parsing des webhooks accepte plusieurs formats (données à plat ou sous `data`, noms de champs alternatifs). Après la mise en service, passez un appel test et vérifiez dans *Téléphonie → Journal d'appels* que l'appel est bien rattaché. Le contenu brut de chaque événement est conservé (`raw_payload`) pour diagnostic.
+| Service | Paramètres | Webhook à déclarer | Récupération auto |
+|---|---|---|---|
+| **Ringover** | Clé API (Dashboard → Développeur → API), région EU/US | Développeur → Webhooks : événements d'appels, enregistrements, transcriptions | API `/calls` |
+| **Aircall** | API ID + API Token (Intégrations & API) ; jeton du webhook | Intégrations & API → Webhooks : `call.created`, `call.answered`, `call.ended`, `call.voicemail_left` | API `/calls` |
+| **Twilio** | Account SID, Auth Token, numéro Twilio | Numéro → Voice → *Call status changes* (POST) ; automatique pour les appels lancés du CRM | API `Calls` |
+| **Asterisk / FreePBX** | Base CDR (MySQL `asteriskcdrdb`, table `cdr`) ; AMI (hôte, port 5038, utilisateur, secret) ; URL des enregistrements | — | Lecture du CDR (regroupé par `linkedid`) |
+| **Webhook générique** | Vérification : aucune, secret en en-tête ou HMAC-SHA256 ; correspondance des champs ; URL de click-to-call | Webhook « fin d'appel » vers l'URL fournie | — |
+
+**Agents** : sur chaque service, associez les utilisateurs du CRM à leur ID chez le fournisseur (Ringover, Aircall), à leur ligne ou téléphone (Ringover, Twilio) ou à leur poste (Asterisk). Les appels leur sont attribués automatiquement et le click-to-call fait sonner leur poste. Cochez **Click-to-call par défaut** sur le service à utiliser pour le bouton « Appeler ».
+
+**Asterisk** : créez un utilisateur MySQL en **lecture seule** sur `asteriskcdrdb` et ouvrez le port MySQL au seul serveur du CRM (pare-feu, VPN ou tunnel). Pour l'AMI, utilisez un utilisateur dédié limité à `originate` (`permit=` sur l'IP du CRM).
+
+**Compatibilité** : les anciennes variables `RINGOVER_API_KEY` / `RINGOVER_WEBHOOK_TOKEN` créent automatiquement le service Ringover, et l'ancienne URL `/webhooks/ringover/{token}` reste active.
 
 ## Configuration de l'IA
 
@@ -139,7 +147,8 @@ app/
 ├── Services/
 │   ├── Ai/ClaudeClient       API Messages Anthropic (texte + sortie structurée, retries)
 │   ├── Ai/LeadIntelligence   Scoring, analyse d'appel, emails, assistant, briefing
-│   ├── Ringover/…            Client API (click-to-call, /calls) + ingestion des appels
+│   ├── Telephony/            Connecteurs (Ringover, Aircall, Twilio, Asterisk, générique),
+│   │                         ingestion idempotente, synchronisation, client AMI
 │   ├── CallLogger            Qualification d'appel (fiche et file d'appels)
 │   ├── LeadAssigner          Distribution équilibrée
 │   └── PhoneNormalizer       E.164 sans dépendance
@@ -149,7 +158,7 @@ app/
 └── Filament/                 Resources, Pages (Dashboard, Session d'appels, Pipeline), Widgets, Import/Export
 ```
 
-Tâches planifiées (conteneur `scheduler`) : synchronisation Ringover et notifications des rappels toutes les 5 minutes, nettoyage quotidien des files.
+Tâches planifiées (conteneur `scheduler`) : récupération des appels de chaque service (selon sa fréquence), notifications des rappels toutes les 5 minutes, nettoyage quotidien des files.
 
 ## RGPD et prospection B2B
 

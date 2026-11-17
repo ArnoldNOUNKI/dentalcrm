@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CallOutcome;
+use App\Enums\CallStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,8 @@ class Call extends Model
     {
         return [
             'outcome' => CallOutcome::class,
+            'status' => CallStatus::class,
+            'answered_at' => 'datetime',
             'is_answered' => 'boolean',
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
@@ -33,6 +36,11 @@ class Call extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function provider(): BelongsTo
+    {
+        return $this->belongsTo(TelephonyProvider::class, 'telephony_provider_id');
     }
 
     public function scopeVisibleTo(Builder $query, ?User $user = null): Builder

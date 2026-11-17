@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Enums\CallOutcome;
+use App\Enums\CallStatus;
 use App\Filament\Resources\CallResource\Pages;
 use App\Jobs\SummarizeCallWithAi;
 use App\Models\Call;
@@ -53,17 +54,21 @@ class CallResource extends Resource
                     ->icon(fn (string $state, Call $r) => $state === 'in'
                         ? ($r->is_answered ? 'heroicon-o-phone-arrow-down-left' : 'heroicon-o-phone-x-mark')
                         : ($r->is_answered ? 'heroicon-o-phone-arrow-up-right' : 'heroicon-o-phone-x-mark'))
-                    ->color(fn (Call $r) => $r->is_answered ? 'success' : 'danger')
-                    ->tooltip(fn (Call $r) => ($r->direction === 'in' ? 'Entrant' : 'Sortant').($r->is_answered ? ' décroché' : ' non décroché')),
+                    ->color(fn (Call $r) => $r->status?->getColor() ?? ($r->is_answered ? 'success' : 'danger'))
+                    ->tooltip(fn (Call $r) => ($r->direction === 'in' ? 'Entrant' : 'Sortant').' — '.($r->status?->getLabel() ?? ($r->is_answered ? 'décroché' : 'non décroché'))),
                 Tables\Columns\TextColumn::make('started_at')->label('Date')->dateTime('d/m/Y H:i')->sortable(),
                 Tables\Columns\TextColumn::make('lead.company_name')->label('Lead')->searchable()->placeholder('Non rattaché')
                     ->url(fn (Call $r) => $r->lead_id ? LeadResource::getUrl('view', ['record' => $r->lead_id]) : null),
                 Tables\Columns\TextColumn::make('number')->label('Numéro')
-                    ->state(fn (Call $r) => PhoneNormalizer::format($r->direction === 'in' ? $r->from_number : $r->to_number))
+                    ->state(fn (Call $r) => PhoneNormalizer::format($r->external_number ?? ($r->direction === 'in' ? $r->from_number : $r->to_number)))
                     ->searchable(query: fn (Builder $query, string $search) => $query->where(fn ($qq) => $qq->where('from_number', 'like', '%'.preg_replace('/\D/', '', $search).'%')->orWhere('to_number', 'like', '%'.preg_replace('/\D/', '', $search).'%')))
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('user.name')->label('Agent')->toggleable()->placeholder('—'),
-                Tables\Columns\TextColumn::make('duration_label')->label('Durée')->alignCenter(),
+                Tables\Columns\TextColumn::make('status')->label('Statut')->badge()->placeholder('—')
+                    ->description(fn (Call $r) => $r->missed_reason ? str_replace('_', ' ', $r->missed_reason) : null),
+                Tables\Columns\TextColumn::make('duration_label')->label('Durée')->alignCenter()
+                    ->description(fn (Call $r) => $r->ring_duration ? 'sonnerie '.$r->ring_duration.' s' : null),
+                Tables\Columns\TextColumn::make('provider.name')->label('Service')->badge()->color('gray')->placeholder('Manuel')->toggleable(),
                 Tables\Columns\TextColumn::make('outcome')->label('Issue')->badge()->placeholder('À qualifier'),
                 Tables\Columns\TextColumn::make('ai_sentiment')->label('Sentiment')->badge()
                     ->color(fn (?string $state) => match ($state) {
@@ -72,11 +77,13 @@ class CallResource extends Resource
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('ai_summary')->label('Résumé IA')->limit(80)->wrap()->toggleable()->placeholder('—'),
                 Tables\Columns\IconColumn::make('recording_url')->label('Enr.')->boolean()
-                    ->state(fn (Call $r) => filled($r->recording_url))->toggleable(isToggledHiddenByDefault: true),
+                    ->state(fn (Call $r) => filled($r->recording_url) || filled($r->voicemail_url))->toggleable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('direction')->options(['in' => 'Entrant', 'out' => 'Sortant']),
                 Tables\Filters\TernaryFilter::make('is_answered')->label('Décroché'),
+                Tables\Filters\SelectFilter::make('status')->label('Statut')->options(CallStatus::class)->multiple(),
+                Tables\Filters\SelectFilter::make('telephony_provider_id')->label('Service')->relationship('provider', 'name'),
                 Tables\Filters\SelectFilter::make('outcome')->label('Issue')->options(CallOutcome::class)->multiple(),
                 Tables\Filters\SelectFilter::make('user_id')->label('Agent')->relationship('user', 'name')
                     ->visible(fn () => Auth::user()->canSeeAllLeads()),
@@ -139,16 +146,25 @@ class CallResource extends Resource
                 Infolists\Components\TextEntry::make('started_at')->label('Date')->dateTime('d/m/Y H:i'),
                 Infolists\Components\TextEntry::make('duration_label')->label('Durée'),
                 Infolists\Components\TextEntry::make('outcome')->label('Issue')->badge()->placeholder('À qualifier'),
+                Infolists\Components\TextEntry::make('status')->label('Statut')->badge()->placeholder('—'),
+                Infolists\Components\TextEntry::make('provider.name')->label('Service')->placeholder('Saisie manuelle'),
+                Infolists\Components\TextEntry::make('ring_duration')->label('Sonnerie / attente')->suffix(' s')->placeholder('—'),
+                Infolists\Components\TextEntry::make('missed_reason')->label('Motif non-réponse')->placeholder('—')
+                    ->formatStateUsing(fn ($state) => str_replace('_', ' ', (string) $state)),
                 Infolists\Components\TextEntry::make('user.name')->label('Agent')->placeholder('—'),
                 Infolists\Components\TextEntry::make('direction')->label('Sens')->formatStateUsing(fn ($state) => $state === 'in' ? 'Entrant' : 'Sortant'),
                 Infolists\Components\TextEntry::make('from_number')->label('De')->formatStateUsing(fn ($state) => PhoneNormalizer::format($state)),
                 Infolists\Components\TextEntry::make('to_number')->label('Vers')->formatStateUsing(fn ($state) => PhoneNormalizer::format($state)),
             ]),
             Infolists\Components\Section::make('Enregistrement')
-                ->visible(fn (Call $r) => filled($r->recording_url))
+                ->visible(fn (Call $r) => filled($r->recording_url) || filled($r->voicemail_url) || ($r->provider?->driver === 'twilio' && $r->is_answered))
                 ->schema([
-                    Infolists\Components\TextEntry::make('recording_url')->hiddenLabel()
-                        ->formatStateUsing(fn ($state) => new HtmlString('<audio controls preload="none" style="width:100%" src="'.e($state).'"></audio>')),
+                    Infolists\Components\TextEntry::make('recording')->label('Conversation')->state(fn (Call $r) => $r->id)
+                        ->visible(fn (Call $r) => filled($r->recording_url) || $r->provider?->driver === 'twilio')
+                        ->formatStateUsing(fn (Call $record) => new HtmlString('<audio controls preload="none" style="width:100%" src="'.e(route('calls.recording', $record)).'"></audio>')),
+                    Infolists\Components\TextEntry::make('voicemail')->label('Message laissé')->state(fn (Call $r) => $r->id)
+                        ->visible(fn (Call $r) => filled($r->voicemail_url))
+                        ->formatStateUsing(fn (Call $record) => new HtmlString('<audio controls preload="none" style="width:100%" src="'.e(route('calls.recording', [$record, 'voicemail' => 1])).'"></audio>')),
                 ]),
             Infolists\Components\Section::make('Analyse IA')->icon('heroicon-o-sparkles')
                 ->visible(fn (Call $r) => filled($r->ai_summary))

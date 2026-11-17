@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Auth;
 
 /**
  * Qualification d'un appel par le commercial (fiche lead ou file d'appels).
- * Si un appel Ringover récent non qualifié existe pour ce lead, il est complété plutôt que dupliqué.
+ * Si un appel récent non qualifié, récupéré automatiquement du service de téléphonie, existe pour ce lead, il est complété plutôt que dupliqué.
  */
 class CallLogger
 {
@@ -25,7 +25,7 @@ class CallLogger
         bool $runAi = true,
         float $durationMinutes = 0,
     ): Call {
-        $call = $lead->calls()->whereNotNull('ringover_call_id')->whereNull('outcome')
+        $call = $lead->calls()->whereNotNull('external_id')->whereNull('outcome')
             ->where('started_at', '>=', now()->subHours(3))->first();
 
         if ($call) {
@@ -45,7 +45,7 @@ class CallLogger
                 'ended_at' => now(),
                 'outcome' => $outcome,
                 'agent_notes' => $notes,
-                'ringover_status' => 'manual',
+                'status' => $outcome->toCallStatus(),
             ]);
             $lead->forceFill(['call_attempts' => $lead->call_attempts + 1])->saveQuietly();
         }

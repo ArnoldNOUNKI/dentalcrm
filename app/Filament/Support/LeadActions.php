@@ -7,12 +7,12 @@ use App\Enums\CallOutcome;
 use App\Enums\LeadStatus;
 use App\Enums\TaskType;
 use App\Models\Lead;
+use App\Models\TelephonyProvider;
 use App\Models\User;
 use App\Services\Ai\LeadIntelligence;
 use App\Services\CallLogger;
 use App\Services\LeadAssigner;
 use App\Services\PhoneNormalizer;
-use App\Services\Ringover\RingoverClient;
 use Filament\Forms;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -39,23 +39,26 @@ class LeadActions
             ->icon('heroicon-o-phone')
             ->color('success')
             ->visible(fn (Lead $record) => $record->dial_number && ! $record->do_not_call)
-            // Sans Ringover configuré pour l'agent : simple lien tel: (softphone / mobile)
-            ->url(fn (Lead $record) => static::ringoverReady() ? null : 'tel:'.$record->dial_number)
-            ->requiresConfirmation(fn () => static::ringoverReady())
+            // Sans service de téléphonie avec click-to-call : simple lien tel: (softphone / mobile)
+            ->url(fn (Lead $record) => static::clickToCallProvider() ? null : 'tel:'.$record->dial_number)
+            ->requiresConfirmation(fn () => (bool) static::clickToCallProvider())
             ->modalHeading(fn (Lead $record) => 'Appeler '.$record->company_name)
-            ->modalDescription(fn (Lead $record) => 'Votre poste Ringover va sonner, puis le '.PhoneNormalizer::format($record->dial_number).' sera composé dès que vous décrochez.')
+            ->modalDescription(fn (Lead $record) => 'Via '.static::clickToCallProvider()?->name.' : votre poste va sonner, puis le '
+                .PhoneNormalizer::format($record->dial_number).' sera composé dès que vous décrochez.')
             ->modalSubmitActionLabel('Lancer l\'appel')
             ->action(function (Lead $record) {
+                $provider = static::clickToCallProvider();
+
                 try {
-                    app(RingoverClient::class)->clickToCall(Auth::user()->ringover_number, $record->dial_number);
-                    Notification::make()->title('Appel en cours…')->body('Décrochez votre poste Ringover.')->success()->send();
+                    $message = $provider->driver()->clickToCall($provider, Auth::user(), $provider->agentFor(Auth::user()), $record->dial_number);
+                    Notification::make()->title('Appel en cours…')->body($message)->success()->send();
                 } catch (\Throwable $e) {
-                    Notification::make()->title('Échec du click-to-call')->body($e->getMessage())->danger()->send();
+                    Notification::make()->title('Échec du click-to-call ('.$provider?->name.')')->body($e->getMessage())->danger()->send();
                 }
             });
     }
 
-    /** Saisie / qualification d'un appel (complète le dernier appel Ringover s'il existe). */
+    /** Saisie / qualification d'un appel (complète le dernier appel récupéré du service de téléphonie s'il existe). */
     public static function logCall(string $class, string $name = 'qualifierAppel')
     {
         return $class::make($name)
@@ -75,7 +78,7 @@ class LeadActions
                     ->rows(5),
                 Forms\Components\Grid::make(3)->schema([
                     Forms\Components\TextInput::make('duration_min')->label('Durée (min)')->numeric()->minValue(0)
-                        ->helperText('Ignoré si l\'appel vient de Ringover'),
+                        ->helperText('Ignoré si l\'appel a été récupéré automatiquement'),
                     Forms\Components\DateTimePicker::make('follow_up_at')->label('Rappeler le')->seconds(false)->native(false)->minDate(now()->subMinute()),
                     Forms\Components\Toggle::make('ai')->label('Analyse IA')->default(fn () => app(LeadIntelligence::class)->isAvailable())->inline(false),
                 ]),
@@ -277,8 +280,8 @@ class LeadActions
             });
     }
 
-    public static function ringoverReady(): bool
+    public static function clickToCallProvider(): ?TelephonyProvider
     {
-        return app(RingoverClient::class)->isConfigured() && filled(Auth::user()?->ringover_number);
+        return once(fn () => TelephonyProvider::forClickToCall());
     }
 }
