@@ -42,7 +42,7 @@ return [
         // Résumé IA automatique des appels terminés
         'auto_summarize_calls' => (bool) env('AI_AUTO_SUMMARIZE_CALLS', true),
         // Contexte métier injecté dans tous les prompts
-        'company_context' => env('AI_COMPANY_CONTEXT', "Nous sommes une société française spécialisée dans la collecte et le rachat de déchets métalliques dentaires (couronnes, bridges, inlays, alliages, limailles, chutes de laboratoire) contenant de l'or, du platine, du palladium et de l'argent. Nous fournissons un kit de collecte gratuit, un enlèvement sécurisé, une analyse/titrage en laboratoire et un paiement rapide au cours du jour. Nos prospects sont des cabinets dentaires, centres dentaires et laboratoires de prothèse."),
+        'company_context' => env('AI_COMPANY_CONTEXT') ?: ("Nous sommes une société française spécialisée dans la collecte et le rachat de déchets métalliques dentaires (couronnes, bridges, inlays, alliages, limailles, chutes de laboratoire) contenant de l'or, du platine, du palladium et de l'argent. Nous fournissons un kit de collecte gratuit, un enlèvement sécurisé, une analyse/titrage en laboratoire et un paiement rapide au cours du jour. Nos prospects sont des cabinets dentaires, centres dentaires et laboratoires de prothèse."),
     ],
 
     'ringover' => [
