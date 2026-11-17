@@ -1,0 +1,6 @@
+Raison sociale;Activité;Civilité;Prénom;Nom du praticien;Téléphone;Portable;Email;Adresse;CP;Ville;SIRET;Nb praticiens;Commentaire
+Cabinet Dentaire des Thermes;Chirurgien-dentiste;Dr;Claire;Muller;03 87 85 12 34;06 12 34 56 78;contact@cabinet-thermes.fr;12 rue Nationale;57600;Forbach;81234567800012;2;Fichier Ordre 57
+Laboratoire Prothèse Lorraine;Laboratoire de prothèse;M.;Paul;Schmitt;03.87.66.55.44;;labo.lorraine@orange.fr;5 ZA Europôle;57200;Sarreguemines;;6;Gros volume de chutes d'alliage
+Centre Dentaire Metz Gare;Centre dentaire;Mme;Sarah;Benali;0387501020;;accueil@cdmetzgare.fr;3 place du Général de Gaulle;57000;Metz;;9;
+Cabinet Dr Weber;Orthodontiste;Dr;Luc;Weber;387223344;;;;67000;Strasbourg;;1;Zéro supprimé par Excel
+Cabinet Dentaire des Thermes (doublon);;;;;+33 3 87 85 12 34;;;;;;;;Doublon du 1er

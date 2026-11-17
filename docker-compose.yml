@@ -1,0 +1,108 @@
+# ---------------------------------------------------------------------------
+# AurumDent CRM — déploiement Docker Compose (compatible Coolify « Docker Compose »)
+#   app       : interface web Filament + webhooks Ringover (port 8080)
+#   queue     : traitement en arrière-plan (imports, IA, webhooks)
+#   scheduler : tâches planifiées (synchro Ringover, notifications de rappels)
+# Les variables sont lues depuis le .env (ou l'onglet « Environment Variables » de Coolify).
+# ---------------------------------------------------------------------------
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: aurumdent-crm:latest
+  restart: unless-stopped
+  env_file: .env
+  environment: &app-env
+    APP_ENV: production
+    DB_CONNECTION: mysql
+    DB_HOST: mysql
+    REDIS_HOST: redis
+    QUEUE_CONNECTION: redis
+    CACHE_STORE: redis
+    SESSION_DRIVER: redis
+    PHP_OPCACHE_ENABLE: "1"
+    PHP_MEMORY_LIMIT: 512M
+    PHP_UPLOAD_MAX_FILE_SIZE: 50M
+    PHP_POST_MAX_SIZE: 50M
+    AUTORUN_ENABLED: "false"
+  volumes:
+    - storage:/var/www/html/storage/app
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  app:
+    <<: *app
+    environment:
+      <<: *app-env
+      AUTORUN_ENABLED: "true"          # migrations + caches au démarrage
+      AUTORUN_LARAVEL_MIGRATION: "true"
+      CRM_IS_WEB: "true"
+    ports:
+      - "${APP_PORT:-8080}:8080"       # Sur Coolify : supprimer cette ligne et déclarer le domaine sur app:8080
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/up"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  queue:
+    <<: *app
+    command: ["php", "/var/www/html/artisan", "queue:work", "--tries=3", "--timeout=180", "--max-time=3600", "--sleep=1"]
+    stop_signal: SIGTERM
+    healthcheck:
+      test: ["CMD", "healthcheck-queue"]
+      start_period: 20s
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app
+    command: ["php", "/var/www/html/artisan", "schedule:work"]
+    stop_signal: SIGTERM
+    healthcheck:
+      test: ["CMD", "healthcheck-schedule"]
+      start_period: 20s
+    depends_on:
+      app:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-crm}
+      MYSQL_USER: ${DB_USERNAME:-crm}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD est obligatoire}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD est obligatoire}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  storage:
+  mysql:
+  redis:

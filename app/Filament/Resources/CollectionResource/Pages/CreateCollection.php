@@ -1,0 +1,21 @@
+<?php
+
+namespace App\Filament\Resources\CollectionResource\Pages;
+
+use App\Filament\Resources\CollectionResource;
+use Filament\Resources\Pages\CreateRecord;
+
+class CreateCollection extends CreateRecord
+{
+    protected static string $resource = CollectionResource::class;
+
+    protected function afterCreate(): void
+    {
+        CollectionResource::syncLead($this->record);
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
+}
